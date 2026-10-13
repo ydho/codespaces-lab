@@ -1,0 +1,13 @@
+// .vscode/settings.json —— 工作區設定：隨 repo 進版控，存檔即生效，不需要重建容器
+{
+  "git.postCommitCommand": "none",          // commit 後不自動 push / sync
+  "git.rememberPostCommitCommand": false,   // 不記住上次的 Commit & Push
+  "git.enableSmartCommit": false,           // 暫存區為空時不自動 stage 全部
+  "git.showActionButton": {                 // 主按鈕只負責 commit，不會變身成 Sync / Publish
+    "commit": true,
+    "publish": false,
+    "sync": false
+  },
+  "git.confirmSync": true,                  // Sync 前跳確認，避免無聲 pull
+  "git.autofetch": true
+}

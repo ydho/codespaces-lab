@@ -1,0 +1,8 @@
+// .vscode/extensions.json —— 建議的擴充套件：「開啟」codespace 時會跳出安裝提示（存檔不會觸發）
+{
+  "recommendations": [
+    "GitHub.vscode-pull-request-github",
+    "eamodio.gitlens",
+    "ms-python.python"
+  ]
+}
