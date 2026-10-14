@@ -1,0 +1,55 @@
+name: ci
+
+on:
+  pull_request:                 # PR：只建置與測試，不產生交付物
+  push:
+    branches: [main]            # main：建置、測試、推送 <SHA> 與 latest
+    tags: ['v*']                # 發版 tag：建置、測試、推送 <SHA> 與版本號
+
+jobs:
+  build-test-publish:
+    runs-on: ubuntu-latest      # 標準 runner：public repo 免費
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write           # 推送 GHCR 所需；來自 fork 的 PR 會被 GitHub 自動降為唯讀
+    steps:
+      - uses: actions/checkout@v5          # 從零 clone：這就是「乾淨建置」（v5 起使用 Node 24；v4 綁 Node 20，已被移除）
+
+      - name: Build image
+        run: docker build --build-arg GIT_SHA=${{ github.sha }} -t ai-demo:ci .
+
+      # CI 不持有任何 LLM 金鑰 → App 以 mock 模式啟動。
+      # 驗收標準是「服務能啟動、能回應、且確實處於 mock 模式」，而非模型回答內容。
+      - name: Smoke test
+        run: |
+          docker run -d --name smoke -p 8000:8000 -e LLM_PROVIDER=google ai-demo:ci
+          ok=0
+          for i in $(seq 1 20); do
+            if curl -fsS localhost:8000/healthz; then ok=1; break; fi
+            sleep 2
+          done
+          if [ "$ok" != 1 ]; then docker logs smoke; exit 1; fi
+          curl -fsS localhost:8000/version | tee /dev/stderr | grep -q '"${{ github.sha }}"'
+          curl -fsS -X POST localhost:8000/api/ask \
+            -H 'Content-Type: application/json' -d '{"prompt":"ping"}' \
+            | tee /dev/stderr | grep -q '"is_mock":true'
+          docker rm -f smoke
+
+      - name: Publish to GHCR
+        if: github.event_name == 'push'      # 品質閘門：只有進入 main 或打 tag 才產生交付物
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$REGISTRY_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          IMAGE=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')   # GHCR 路徑必須小寫
+          TAGS="${{ github.sha }}"                        # 不可變、可追溯
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAGS="$TAGS ${{ github.ref_name }}"           # 例如 v0.1.0
+          else
+            TAGS="$TAGS latest"                           # 只有 main 的推送才移動 latest
+          fi
+          for t in $TAGS; do
+            docker tag ai-demo:ci "$IMAGE:$t"
+            docker push "$IMAGE:$t"
+          done
